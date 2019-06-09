@@ -1,0 +1,19 @@
+language: perl
+perl:
+  - "5.26"
+  - "5.28"
+  - "5.30"
+
+before_script:
+  - cpanm --quiet --notest --skip-satisfied Devel::Cover::Report::Coveralls
+  - cpanm --quiet --notest --with-develop --installdeps .
+  - cover -delete 
+
+script:
+  - perl Build.PL 
+  - ./Build build 
+  - HARNESS_PERL_SWITCHES="-MDevel::Cover=+ignore,inc" PERL5LIB="lib" prove t/
+
+after_success:
+  - cover -report coveralls
+
