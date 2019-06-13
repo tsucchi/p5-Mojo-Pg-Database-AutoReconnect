@@ -31,8 +31,6 @@ EOF
 my $db = $pg->db;
 $db->dbh->do($sql_person);
 
-ok 1;
-
 my $person_id = $db->insert('person', {
     name => 'Sherlock Shellingford',
     age  => 15,
@@ -55,9 +53,7 @@ subtest 'auto reconnect', sub {
 };
 
 subtest 'in transaction', sub {
-
-    my $row = $db->select('person', '*', { id => $person_id })->hash;
-
+    #my $row = $db->select('person', '*', { id => $person_id })->hash;
     my $txn = $db->begin();
     my $guard = qclass(
         -takeover => 'DBI::db',
@@ -70,8 +66,10 @@ subtest 'in transaction', sub {
             age  => 15,
         });
     };
+
     like( $@, qr/^Detected transaction/ );
 };
 
+ok 1;
 
 done_testing;

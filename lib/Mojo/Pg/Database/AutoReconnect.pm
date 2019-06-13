@@ -1,37 +1,51 @@
 package Mojo::Pg::Database::AutoReconnect;
-use 5.008005;
-use strict;
-use warnings;
+use Mojo::Base 'Mojo::Pg::Database';
 
 our $VERSION = "0.01";
 
-use parent 'Mojo::Pg::Database';
+has 'owner_pid';
 
+sub new {
+    my $class = shift;
+    my $self = $class->SUPER::new(@_);
+    bless $self, $class;
+    $self->owner_pid($$);
+    return $self;
+}
 
 sub reconnect {
     my ($self) = @_;
 
     $self->_in_transaction_check();
 
-    #$self->disconnect();
-
     my $dbh = $self->{dbh};
+    $self->disconnect;
     $self->{dbh} = $dbh->clone();
-    #$dbh->disconnect();
-    #$self->owner_pid($$);
+    $self->owner_pid($$);
 }
+
+sub disconnect {
+    my $self = shift;
+    $self->owner_pid(undef);
+    $self->_unwatch;
+    $self->{dbh}->disconnect;
+}
+
 
 sub dbh {
     my ($self) = @_;
     if ( $_[1] ) {
         $self->{dbh} = $_[1];
+        $self->owner_pid($$);
         return;
     }
 
     my $dbh = $self->{dbh};
-    if ( !defined $dbh->{pg_pid} || $dbh->{pg_pid} != $$ ) {
+    if ( !defined $self->owner_pid || $self->owner_pid != $$ ) {
         $self->reconnect;
     }
+
+    $dbh = $self->{dbh};
     if ( !$dbh->FETCH('Active') || !$dbh->ping ) {
         $self->reconnect;
     }
@@ -45,12 +59,22 @@ sub _in_transaction_check {
     if ( $self->{dbh}->FETCH('BegunWork') ) {
         # TODO: fetch sufficient caller information
         # my $caller = [caller()];
-        # my $pid    = $self->{dbh}->{pg_pid};
-        Carp::confess("Detected transaction during a connect operation. Refusing to proceed at");
+        # my $pid    = $self->owner_pid();
         #Carp::confess("Detected transaction during a connect operation (last known transaction at $caller->[1] line $caller->[2], pid $pid). Refusing to proceed at");
+        Carp::confess("Detected transaction during a connect operation. Refusing to proceed");
     }
 }
 
+
+sub DESTROY {
+  my $self = shift;
+
+  my $waiting = $self->{waiting};
+  $waiting->{cb}($self, 'Premature connection close', undef) if $waiting->{cb};
+
+  return unless (my $pg = $self->pg) && (my $dbh = $self->{dbh}); # modify using raw dbh
+  $pg->_enqueue($dbh) unless $dbh->{private_mojo_no_reuse};
+}
 
 
 1;
@@ -124,7 +148,7 @@ it under the same terms as Perl itself.
 
 =head1 AUTHOR
 
-tsucchi E<lt>tsucchi@cpanm.orgE<gt>
+tsucchi E<lt>tsucchi@cpan.orgE<gt>
 
 =head1 SEE ALSO
 
